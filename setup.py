@@ -18,7 +18,7 @@ def read_requirements():
 
 setup(
     name="bonicbot",
-    version="1.0.1",
+    version="1.0.2",
     author="Shahir abdulla",  # Replace with your name
     author_email="shahir@autobonics.com",  # Replace with your email
     description="Python library for controlling BonicBot humanoid robot via serial communication",
@@ -46,6 +46,8 @@ setup(
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
         "Operating System :: OS Independent",
         "Operating System :: POSIX :: Linux",
         "Operating System :: Microsoft :: Windows",
