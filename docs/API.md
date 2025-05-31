@@ -1,29 +1,103 @@
-
 # BonicBot API Documentation
 
 ## Overview
 
-The BonicBot library provides a comprehensive Python interface for controlling BonicBot humanoid robots via serial communication. The main components are:
+The BonicBot library provides a comprehensive Python interface for controlling BonicBot humanoid robots via **serial communication** or **WebSocket**. The main components are:
 
-- `BonicBotController`: Core controller class
+- `BonicBotController`: Core controller class supporting both communication protocols
+- `CommunicationType`: Enumeration for communication method selection
 - `ServoID`: Enumeration of available servos
 - `BonicBotGUI`: Graphical user interface
+- `create_serial_controller`: Convenience function for serial connections
+- `create_websocket_controller`: Convenience function for WebSocket connections
 
 ## BonicBotController Class
 
 ### Constructor
 
 ```python
-BonicBotController(port: str, baudrate: int = 115200, timeout: float = 1.0)
+BonicBotController(
+    comm_type: Union[str, CommunicationType],
+    port: Optional[str] = None,
+    baudrate: int = 115200,
+    timeout: float = 1.0,
+    websocket_uri: Optional[str] = None
+)
 ```
 
 **Parameters:**
-- `port` (str): Serial port name (e.g., '/dev/ttyUSB0', 'COM3')
+- `comm_type` (str or CommunicationType): 'serial' or 'websocket'
+- `port` (str): Serial port name (required for serial) 
 - `baudrate` (int): Serial baud rate (default: 115200)
-- `timeout` (float): Serial timeout in seconds (default: 1.0)
+- `timeout` (float): Communication timeout (default: 1.0)
+- `websocket_uri` (str): WebSocket URI (required for WebSocket)
+
+**Examples:**
+```python
+# Serial communication
+bot = BonicBotController('serial', port='/dev/ttyUSB0', baudrate=115200)
+bot = BonicBotController(CommunicationType.SERIAL, port='COM3')
+
+# WebSocket communication  
+bot = BonicBotController('websocket', websocket_uri='ws://192.168.1.100:8080/control')
+bot = BonicBotController(CommunicationType.WEBSOCKET, websocket_uri='ws://robot.local:8080/control')
+```
 
 **Raises:**
-- `ConnectionError`: If unable to establish serial connection
+- `ValueError`: Invalid communication type or missing required parameters
+- `ConnectionError`: Unable to establish connection
+
+## Convenience Functions
+
+### create_serial_controller()
+
+```python
+create_serial_controller(port: str, baudrate: int = 115200) -> BonicBotController
+```
+
+Create a BonicBot controller for serial communication.
+
+**Parameters:**
+- `port` (str): Serial port name
+- `baudrate` (int): Serial baud rate
+
+**Returns:**
+- `BonicBotController`: Controller instance configured for serial
+
+**Example:**
+```python
+bot = create_serial_controller('/dev/ttyUSB0')
+```
+
+### create_websocket_controller()
+
+```python
+create_websocket_controller(websocket_uri: str, timeout: float = 1.0) -> BonicBotController
+```
+
+Create a BonicBot controller for WebSocket communication.
+
+**Parameters:**
+- `websocket_uri` (str): WebSocket URI
+- `timeout` (float): Connection timeout
+
+**Returns:**
+- `BonicBotController`: Controller instance configured for WebSocket
+
+**Example:**
+```python
+bot = create_websocket_controller('ws://192.168.1.100:8080/control')
+```
+
+## CommunicationType Enumeration
+
+```python
+class CommunicationType(Enum):
+    SERIAL = "serial"
+    WEBSOCKET = "websocket"
+```
+
+Used to specify the communication protocol.
 
 ### Individual Servo Control
 

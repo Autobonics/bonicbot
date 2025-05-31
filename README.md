@@ -4,15 +4,16 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/bonicbot.svg)](https://pypi.org/project/bonicbot/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A comprehensive Python library for controlling BonicBot humanoid robots via serial communication. This library provides intuitive methods to control individual servos, coordinate complex movements, and manage the robot's base motors.
+A comprehensive Python library for controlling BonicBot humanoid robots via **serial communication** or **WebSocket**. This library provides intuitive methods to control individual servos, coordinate complex movements, and manage the robot's base motors with support for both local (serial) and remote (WebSocket) connections.
 
 ## Features
 
+- **Dual Communication Support**: Serial (USB/UART) and WebSocket connectivity
 - **Individual Servo Control**: Precise control of each servo with custom angles, speeds, and acceleration
 - **Group Control**: Coordinated control of head, left hand, right hand, and base motors
 - **GUI Interface**: User-friendly graphical interface for real-time robot control
 - **Preset Positions**: Built-in preset positions and custom position saving/loading
-- **Serial Communication**: Robust serial communication with error handling
+- **Robust Communication**: Error handling and connection management for both protocols
 - **Type Hints**: Full type annotations for better IDE support and code reliability
 
 ## Installation
@@ -60,14 +61,17 @@ pip install -e .[dev]
 
 ## Quick Start
 
-### Basic Usage
+### Serial Communication (USB/UART)
 
 ```python
-from bonicbot import BonicBotController
+from bonicbot import BonicBotController, create_serial_controller
 
-# Connect to robot
-bot = BonicBotController('/dev/ttyUSB0')  # Linux/Mac
-# bot = BonicBotController('COM3')        # Windows
+# Method 1: Direct initialization
+bot = BonicBotController('serial', port='/dev/ttyUSB0', baudrate=115200)
+
+# Method 2: Using convenience function  
+bot = create_serial_controller('/dev/ttyUSB0')  # Linux/Mac
+# bot = create_serial_controller('COM3')        # Windows
 
 # Control individual servo
 bot.control_servo('headPan', angle=45.0, speed=200)
@@ -87,14 +91,41 @@ bot.stop()
 bot.close()
 ```
 
-### Using Context Manager
+### WebSocket Communication (Remote/Network)
 
 ```python
-from bonicbot import BonicBotController
+from bonicbot import BonicBotController, create_websocket_controller
 
-with BonicBotController('/dev/ttyUSB0') as bot:
+# Method 1: Direct initialization
+bot = BonicBotController('websocket', websocket_uri='ws://192.168.1.100:8080/control')
+
+# Method 2: Using convenience function
+bot = create_websocket_controller('ws://192.168.1.100:8080/control')
+
+# Same control methods work for both communication types
+bot.control_head(pan_angle=45.0)
+bot.control_left_hand(gripper_angle=90.0)
+bot.move_forward(speed=100)
+
+# Close connection
+bot.close()
+```
+
+### Using Context Manager (Recommended)
+
+```python
+from bonicbot import create_serial_controller, create_websocket_controller
+
+# Serial connection
+with create_serial_controller('/dev/ttyUSB0') as bot:
     bot.control_head(pan_angle=45.0)
     bot.control_left_hand(gripper_angle=90.0)
+    # Connection automatically closed
+
+# WebSocket connection  
+with create_websocket_controller('ws://192.168.1.100:8080/control') as bot:
+    bot.control_head(pan_angle=45.0)
+    bot.move_forward(speed=100)
     # Connection automatically closed
 ```
 
@@ -122,14 +153,23 @@ else:
 
 | Feature | Core Library | GUI Required |
 |---------|-------------|--------------|
-| Robot control | ✅ Always works | N/A |
+| Serial robot control | ✅ Always works | N/A |
+| WebSocket robot control | ✅ Always works | N/A |
 | Individual servo control | ✅ Always works | N/A |
 | Head/hand movements | ✅ Always works | N/A |
 | Base motor control | ✅ Always works | N/A |
 | Examples and scripts | ✅ Always works | N/A |
+| Connection monitoring | ✅ Always works | N/A |
 | Visual control interface | ❌ Needs tkinter | ✅ |
 | Real-time sliders | ❌ Needs tkinter | ✅ |
 | Preset position GUI | ❌ Needs tkinter | ✅ |
+
+## Communication Methods
+
+| Method | Use Case | Pros | Cons |
+|--------|----------|------|------|
+| **Serial** | Direct USB connection | Low latency, reliable | Physical connection required |
+| **WebSocket** | Network/remote control | Wireless, multiple clients | Network dependent, higher latency |
 
 ## Available Servos
 
@@ -198,7 +238,8 @@ See the `examples/` directory for more comprehensive examples:
 ## Hardware Requirements
 
 - BonicBot humanoid robot
-- USB to serial adapter (if not built-in)
+- **For Serial Communication**: USB to serial adapter (if not built-in)
+- **For WebSocket Communication**: Network connection (WiFi/Ethernet)
 - Python 3.7 or higher
 
 ## Why isn't tkinter in requirements.txt?
@@ -258,8 +299,16 @@ This will test:
 **Quick tests:**
 ```python
 # Test core functionality
-from bonicbot import BonicBotController
+from bonicbot import BonicBotController, CommunicationType
 print("✅ Core functionality works!")
+
+# Test serial controller creation
+from bonicbot import create_serial_controller
+print("✅ Serial controller available!")
+
+# Test WebSocket controller creation
+from bonicbot import create_websocket_controller  
+print("✅ WebSocket controller available!")
 
 # Test GUI availability  
 from bonicbot import is_gui_available
@@ -276,12 +325,38 @@ This means the GUI component isn't available. **The core robot control still wor
 sudo apt-get install python3-tk
 
 # Test again
-bonicbot-test
+from bonicbot.test_installation import test; test()
 ```
 
-### Serial Port Permission Issues
+### Serial Port Issues
 ```bash
-# Linux: Add user to dialout group
+# Permission denied
 sudo usermod -a -G dialout $USER
 # Then log out and back in
+
+# Port not found - check available ports
+python -c "import serial.tools.list_ports; print([p.device for p in serial.tools.list_ports.comports()])"
+```
+
+### WebSocket Connection Issues
+```bash
+# Connection refused
+# 1. Check robot IP address
+ping 192.168.1.100
+
+# 2. Check if WebSocket server is running
+nc -zv 192.168.1.100 8080
+
+# 3. Test WebSocket connection manually
+curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" http://192.168.1.100:8080/control
+```
+
+### Network Discovery
+```python
+# Find robots on network (if they support discovery)
+import socket
+def find_robots():
+    # This is example code - adapt to your robot's discovery method
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.sendto(b"ROBOT_DISCOVERY", ("255.255.255.255", 8080))
 ```

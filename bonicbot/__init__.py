@@ -23,13 +23,19 @@ Example:
     ...     bot.move_forward(speed=100)
 """
 
-__version__ = "1.0.2"
-__author__ = "Your Name"
-__email__ = "your.email@example.com"
+__version__ = "1.2.0"
+__author__ = "Shahir Abdulla"
+__email__ = "shahir@autobonics.com"
 __license__ = "MIT"
 __description__ = "Python library for controlling BonicBot humanoid robot via serial communication"
 
-from .controller import BonicBotController, ServoID, create_controller
+from .controller import (
+    BonicBotController, 
+    ServoID, 
+    CommunicationType,
+    create_serial_controller,
+    create_websocket_controller
+)
 
 # Try to import GUI components (optional)
 try:
@@ -38,7 +44,9 @@ try:
     __all__ = [
         "BonicBotController",
         "ServoID", 
-        "create_controller",
+        "CommunicationType",
+        "create_serial_controller",
+        "create_websocket_controller",
         "BonicBotGUI",
         "run_servo_controller",
         "is_gui_available",
@@ -49,7 +57,9 @@ except ImportError as e:
     __all__ = [
         "BonicBotController",
         "ServoID", 
-        "create_controller",
+        "CommunicationType",
+        "create_serial_controller",
+        "create_websocket_controller",
         "is_gui_available",
     ]
     

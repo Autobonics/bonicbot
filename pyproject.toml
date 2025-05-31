@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bonicbot"
-description = "Python library for controlling BonicBot humanoid robot via serial communication"
+description = "Python library for controlling BonicBot humanoid robot via serial communication and WebSocket"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
@@ -15,7 +15,7 @@ maintainers = [
 ]
 keywords = [
     "robot", "robotics", "servo", "control", "serial", "communication",
-    "humanoid", "bonicbot", "hardware", "automation"
+    "humanoid", "bonicbot", "hardware", "automation", "websocket", "remote"
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -39,6 +39,7 @@ classifiers = [
 requires-python = ">=3.7"
 dependencies = [
     "pyserial>=3.4",
+    "websocket-client>=1.0.0",
 ]
 dynamic = ["version"]
 

@@ -16,7 +16,13 @@ def test_core_imports():
     """Test core BonicBot functionality."""
     print("Testing core imports...")
     try:
-        from . import BonicBotController, ServoID, create_controller
+        from . import (
+            BonicBotController, 
+            ServoID, 
+            CommunicationType,
+            create_serial_controller,
+            create_websocket_controller
+        )
         print("✅ Core imports successful")
         return True
     except ImportError as e:
@@ -40,6 +46,28 @@ def test_gui_availability():
         print(f"❌ GUI test failed: {e}")
         return False
 
+def test_communication_types():
+    """Test communication type functionality."""
+    print("\nTesting communication types...")
+    try:
+        from . import CommunicationType, create_serial_controller, create_websocket_controller
+        
+        # Test enum values
+        assert CommunicationType.SERIAL.value == "serial"
+        assert CommunicationType.WEBSOCKET.value == "websocket"
+        print("  ✅ CommunicationType enum working")
+        
+        # Test convenience functions exist
+        assert callable(create_serial_controller)
+        assert callable(create_websocket_controller)
+        print("  ✅ Convenience functions available")
+        
+        print("✅ Communication types working")
+        return True
+    except Exception as e:
+        print(f"❌ Communication types test failed: {e}")
+        return False
+    
 def test_servo_ids():
     """Test ServoID enumeration."""
     print("\nTesting ServoID enumeration...")
@@ -99,6 +127,7 @@ def test():
     # Run tests
     results.append(("Core Imports", test_core_imports()))
     results.append(("ServoID Enum", test_servo_ids()))
+    results.append(("Communication Types", test_communication_types()))
     results.append(("GUI Availability", test_gui_availability()))
     
     # Summary
@@ -115,7 +144,7 @@ def test():
     
     print(f"\nPassed: {passed}/{len(results)} tests")
     
-    if passed >= 2:  # Core functionality works
+    if passed >= 3:  # Core functionality works (core imports + servo ids + comm types)
         print("\n🎉 BonicBot installation successful!")
         if passed < len(results):
             print("💡 GUI not available, but robot control works fine.")

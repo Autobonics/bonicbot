@@ -3,6 +3,7 @@
 BonicBot GUI Controller
 
 A graphical user interface for controlling BonicBot servos and base motors.
+Supports both serial and WebSocket communication.
 Designed for Raspberry Pi with tkinter.
 """
 
@@ -11,7 +12,7 @@ from tkinter import ttk, messagebox, filedialog
 import threading
 import time
 import json
-from .controller import BonicBotController, ServoID
+from .controller import BonicBotController, ServoID, CommunicationType
 
 class ServoLimits:
     """Servo angle limits based on the C++ code"""
@@ -40,17 +41,23 @@ class BonicBotGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("BonicBot Controller")
-        self.root.geometry("1000x700")
+        self.root.geometry("1000x750")
         
         # Controller instance
         self.controller = None
         self.connected = False
         
+        # Communication variables
+        self.comm_type_var = tk.StringVar(value="serial")
+        self.port_var = tk.StringVar(value="/dev/ttyUSB0")
+        self.websocket_uri_var = tk.StringVar(value="ws://192.168.1.100:8080/control")
+        self.baudrate_var = tk.IntVar(value=115200)
+        
         # Create GUI elements
         self.create_widgets()
         
-        # Default serial port
-        self.port_var.set("/dev/ttyUSB0")
+        # Initialize UI state
+        self.on_comm_type_change()
         
     def create_widgets(self):
         """Create all GUI widgets"""
@@ -85,18 +92,60 @@ class BonicBotGUI:
         conn_frame = tk.Frame(self.root)
         conn_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        tk.Label(conn_frame, text="Serial Port:").pack(side=tk.LEFT)
+        # Communication type selection
+        comm_type_frame = tk.LabelFrame(conn_frame, text="Communication Type")
+        comm_type_frame.pack(side=tk.LEFT, padx=5, pady=5)
         
-        self.port_var = tk.StringVar()
-        port_entry = tk.Entry(conn_frame, textvariable=self.port_var, width=15)
-        port_entry.pack(side=tk.LEFT, padx=5)
+        tk.Radiobutton(comm_type_frame, text="Serial", variable=self.comm_type_var, 
+                      value="serial", command=self.on_comm_type_change).pack(side=tk.LEFT)
+        tk.Radiobutton(comm_type_frame, text="WebSocket", variable=self.comm_type_var, 
+                      value="websocket", command=self.on_comm_type_change).pack(side=tk.LEFT)
         
-        self.connect_btn = tk.Button(conn_frame, text="Connect", 
-                                    command=self.toggle_connection, bg="green")
-        self.connect_btn.pack(side=tk.LEFT, padx=5)
+        # Connection parameters frame
+        params_frame = tk.LabelFrame(conn_frame, text="Connection Parameters")
+        params_frame.pack(side=tk.LEFT, padx=5, pady=5, fill=tk.X, expand=True)
         
-        self.status_label = tk.Label(conn_frame, text="Disconnected", fg="red")
-        self.status_label.pack(side=tk.LEFT, padx=20)
+        # Serial parameters
+        self.serial_frame = tk.Frame(params_frame)
+        self.serial_frame.pack(fill=tk.X)
+        
+        tk.Label(self.serial_frame, text="Port:").pack(side=tk.LEFT)
+        self.port_entry = tk.Entry(self.serial_frame, textvariable=self.port_var, width=15)
+        self.port_entry.pack(side=tk.LEFT, padx=5)
+        
+        tk.Label(self.serial_frame, text="Baudrate:").pack(side=tk.LEFT, padx=(10, 0))
+        self.baudrate_entry = tk.Entry(self.serial_frame, textvariable=self.baudrate_var, width=8)
+        self.baudrate_entry.pack(side=tk.LEFT, padx=5)
+        
+        # WebSocket parameters
+        self.websocket_frame = tk.Frame(params_frame)
+        self.websocket_frame.pack(fill=tk.X)
+        
+        tk.Label(self.websocket_frame, text="WebSocket URI:").pack(side=tk.LEFT)
+        self.websocket_entry = tk.Entry(self.websocket_frame, textvariable=self.websocket_uri_var, width=35)
+        self.websocket_entry.pack(side=tk.LEFT, padx=5)
+        
+        # Connection control
+        control_frame = tk.Frame(conn_frame)
+        control_frame.pack(side=tk.RIGHT, padx=5, pady=5)
+        
+        self.connect_btn = tk.Button(control_frame, text="Connect", 
+                                    command=self.toggle_connection, bg="green", font=("Arial", 10, "bold"))
+        self.connect_btn.pack()
+        
+        self.status_label = tk.Label(control_frame, text="Disconnected", fg="red", font=("Arial", 10))
+        self.status_label.pack()
+        
+    def on_comm_type_change(self):
+        """Handle communication type selection change"""
+        comm_type = self.comm_type_var.get()
+        
+        if comm_type == "serial":
+            self.serial_frame.pack(fill=tk.X)
+            self.websocket_frame.pack_forget()
+        else:  # websocket
+            self.websocket_frame.pack(fill=tk.X)
+            self.serial_frame.pack_forget()
         
     def create_servo_tab(self):
         """Create individual servo control tab"""
@@ -366,19 +415,51 @@ class BonicBotGUI:
     def connect_robot(self):
         """Connect to robot"""
         try:
-            port = self.port_var.get().strip()
-            if not port:
-                messagebox.showerror("Error", "Please enter a serial port")
-                return
-                
-            self.controller = BonicBotController(port)
-            self.connected = True
-            self.connect_btn.config(text="Disconnect", bg="red")
-            self.status_label.config(text="Connected", fg="green")
-            messagebox.showinfo("Success", f"Connected to {port}")
+            comm_type = self.comm_type_var.get()
             
+            if comm_type == "serial":
+                port = self.port_var.get().strip()
+                if not port:
+                    messagebox.showerror("Error", "Please enter a serial port")
+                    return
+                
+                baudrate = self.baudrate_var.get()
+                self.controller = BonicBotController(
+                    comm_type=CommunicationType.SERIAL,
+                    port=port,
+                    baudrate=baudrate
+                )
+                connection_info = f"Serial: {port} @ {baudrate}"
+                
+            elif comm_type == "websocket":
+                websocket_uri = self.websocket_uri_var.get().strip()
+                if not websocket_uri:
+                    messagebox.showerror("Error", "Please enter a WebSocket URI")
+                    return
+                
+                self.controller = BonicBotController(
+                    comm_type=CommunicationType.WEBSOCKET,
+                    websocket_uri=websocket_uri
+                )
+                connection_info = f"WebSocket: {websocket_uri}"
+            
+            # Check if connection is successful
+            if self.controller.is_connected():
+                self.connected = True
+                self.connect_btn.config(text="Disconnect", bg="red")
+                self.status_label.config(text="Connected", fg="green")
+                messagebox.showinfo("Success", f"Connected via {connection_info}")
+            else:
+                raise ConnectionError("Failed to establish connection")
+                
         except Exception as e:
             messagebox.showerror("Connection Error", f"Failed to connect: {str(e)}")
+            if self.controller:
+                try:
+                    self.controller.close()
+                except:
+                    pass
+                self.controller = None
             
     def disconnect_robot(self):
         """Disconnect from robot"""

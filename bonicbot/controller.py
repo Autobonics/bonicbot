@@ -1,15 +1,23 @@
 """
 BonicBot Control Library
 
-A Python library for controlling BonicBot servos via serial communication.
+A Python library for controlling BonicBot servos via serial communication or WebSocket.
 Provides methods to control individual servos or groups of servos (head, hands, base).
 """
 
 import json
 import serial
 import time
+import websocket
+import threading
 from typing import Dict, Optional, Union
 from enum import Enum
+
+
+class CommunicationType(Enum):
+    """Enumeration of communication types"""
+    SERIAL = "serial"
+    WEBSOCKET = "websocket"
 
 
 class ServoID(Enum):
@@ -32,31 +40,74 @@ class ServoID(Enum):
 
 class BonicBotController:
     """
-    Main controller class for BonicBot servo control via serial communication.
+    Main controller class for BonicBot servo control via serial communication or WebSocket.
     
     Usage:
-        bot = BonicBotController(port='/dev/ttyUSB0', baudrate=115200)
+        # Serial communication
+        bot = BonicBotController(comm_type='serial', port='/dev/ttyUSB0', baudrate=115200)
+        
+        # WebSocket communication
+        bot = BonicBotController(comm_type='websocket', websocket_uri='ws://192.168.1.100:8080/control')
+        
+        # Common usage
         bot.control_servo('headPan', angle=45.0, speed=200, acc=20)
         bot.control_head(pan_angle=30.0, tilt_angle=-10.0)
         bot.control_left_hand(gripper_angle=90.0, elbow_angle=45.0)
     """
     
-    def __init__(self, port: str, baudrate: int = 115200, timeout: float = 1.0):
+    def __init__(self, comm_type: Union[str, CommunicationType], 
+                 port: Optional[str] = None, baudrate: int = 115200, 
+                 timeout: float = 1.0, websocket_uri: Optional[str] = None):
         """
         Initialize the BonicBot controller.
         
         Args:
-            port: Serial port name (e.g., '/dev/ttyUSB0', 'COM3')
-            baudrate: Serial communication baud rate
-            timeout: Serial communication timeout in seconds
+            comm_type: Communication type ('serial' or 'websocket')
+            port: Serial port name (required for serial communication)
+            baudrate: Serial communication baud rate (for serial only)
+            timeout: Communication timeout in seconds
+            websocket_uri: WebSocket URI (required for websocket communication)
         """
+        # Convert string to enum if needed
+        if isinstance(comm_type, str):
+            try:
+                self.comm_type = CommunicationType(comm_type.lower())
+            except ValueError:
+                raise ValueError(f"Invalid communication type: {comm_type}. Must be 'serial' or 'websocket'")
+        else:
+            self.comm_type = comm_type
+        
+        # Store parameters
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
+        self.websocket_uri = websocket_uri
+        
+        # Initialize connection objects
         self._serial = None
+        self._websocket = None
+        self._websocket_connected = False
+        self._websocket_lock = threading.Lock()
+        
+        # Validate parameters based on communication type
+        if self.comm_type == CommunicationType.SERIAL:
+            if not port:
+                raise ValueError("Serial port must be specified for serial communication")
+        elif self.comm_type == CommunicationType.WEBSOCKET:
+            if not websocket_uri:
+                raise ValueError("WebSocket URI must be specified for websocket communication")
+        
+        # Establish connection
         self._connect()
     
     def _connect(self):
+        """Establish connection based on communication type"""
+        if self.comm_type == CommunicationType.SERIAL:
+            self._connect_serial()
+        elif self.comm_type == CommunicationType.WEBSOCKET:
+            self._connect_websocket()
+    
+    def _connect_serial(self):
         """Establish serial connection"""
         try:
             self._serial = serial.Serial(
@@ -65,10 +116,75 @@ class BonicBotController:
                 timeout=self.timeout
             )
             time.sleep(2)  # Allow connection to stabilize
+            print(f"Serial connection established on {self.port}")
         except serial.SerialException as e:
             raise ConnectionError(f"Failed to connect to {self.port}: {e}")
     
+    def _connect_websocket(self):
+        """Establish WebSocket connection"""
+        try:
+            # Set up WebSocket callbacks
+            def on_open(ws):
+                with self._websocket_lock:
+                    self._websocket_connected = True
+                print(f"WebSocket connection established to {self.websocket_uri}")
+            
+            def on_close(ws, close_status_code, close_msg):
+                with self._websocket_lock:
+                    self._websocket_connected = False
+                print(f"WebSocket connection closed: {close_status_code} - {close_msg}")
+            
+            def on_error(ws, error):
+                with self._websocket_lock:
+                    self._websocket_connected = False
+                print(f"WebSocket error: {error}")
+            
+            def on_message(ws, message):
+                # Handle incoming messages if needed
+                print(f"Received: {message}")
+            
+            # Create WebSocket connection
+            self._websocket = websocket.WebSocketApp(
+                self.websocket_uri,
+                on_open=on_open,
+                on_message=on_message,
+                on_error=on_error,
+                on_close=on_close
+            )
+            
+            # Start WebSocket in a separate thread
+            self._websocket_thread = threading.Thread(
+                target=self._websocket.run_forever,
+                daemon=True
+            )
+            self._websocket_thread.start()
+            
+            # Wait for connection to be established
+            max_wait = 5  # seconds
+            wait_time = 0
+            while not self._websocket_connected and wait_time < max_wait:
+                time.sleep(0.1)
+                wait_time += 0.1
+            
+            if not self._websocket_connected:
+                raise ConnectionError(f"Failed to establish WebSocket connection within {max_wait} seconds")
+                
+        except Exception as e:
+            raise ConnectionError(f"Failed to connect to WebSocket {self.websocket_uri}: {e}")
+    
     def _send_command(self, command: Dict):
+        """
+        Send JSON command via the configured communication method.
+        
+        Args:
+            command: Dictionary containing the command structure
+        """
+        if self.comm_type == CommunicationType.SERIAL:
+            self._send_command_serial(command)
+        elif self.comm_type == CommunicationType.WEBSOCKET:
+            self._send_command_websocket(command)
+    
+    def _send_command_serial(self, command: Dict):
         """
         Send JSON command via serial connection.
         
@@ -83,7 +199,38 @@ class BonicBotController:
             self._serial.write(json_command.encode('utf-8'))
             self._serial.flush()
         except Exception as e:
-            raise RuntimeError(f"Failed to send command: {e}")
+            raise RuntimeError(f"Failed to send command via serial: {e}")
+    
+    def _send_command_websocket(self, command: Dict):
+        """
+        Send JSON command via WebSocket connection.
+        
+        Args:
+            command: Dictionary containing the command structure
+        """
+        with self._websocket_lock:
+            if not self._websocket_connected:
+                raise ConnectionError("WebSocket connection not established")
+        
+        try:
+            json_command = json.dumps(command)
+            self._websocket.send(json_command)
+        except Exception as e:
+            raise RuntimeError(f"Failed to send command via WebSocket: {e}")
+    
+    def is_connected(self) -> bool:
+        """
+        Check if the connection is active.
+        
+        Returns:
+            True if connected, False otherwise
+        """
+        if self.comm_type == CommunicationType.SERIAL:
+            return self._serial and self._serial.is_open
+        elif self.comm_type == CommunicationType.WEBSOCKET:
+            with self._websocket_lock:
+                return self._websocket_connected
+        return False
     
     def control_servo(self, servo_id: Union[str, ServoID], angle: float, 
                      speed: int = 200, acc: int = 20):
@@ -314,9 +461,17 @@ class BonicBotController:
         self.control_base(0, 0)
     
     def close(self):
-        """Close the serial connection"""
-        if self._serial and self._serial.is_open:
-            self._serial.close()
+        """Close the connection"""
+        if self.comm_type == CommunicationType.SERIAL:
+            if self._serial and self._serial.is_open:
+                self._serial.close()
+                print("Serial connection closed")
+        elif self.comm_type == CommunicationType.WEBSOCKET:
+            if self._websocket:
+                self._websocket.close()
+                with self._websocket_lock:
+                    self._websocket_connected = False
+                print("WebSocket connection closed")
     
     def __enter__(self):
         """Context manager entry"""
@@ -328,47 +483,82 @@ class BonicBotController:
 
 
 # Convenience functions for quick access
-def create_controller(port: str, baudrate: int = 115200) -> BonicBotController:
+def create_serial_controller(port: str, baudrate: int = 115200) -> BonicBotController:
     """
-    Create a BonicBot controller instance.
+    Create a BonicBot controller instance for serial communication.
     
     Args:
         port: Serial port name
         baudrate: Serial baud rate
     
     Returns:
-        BonicBotController instance
+        BonicBotController instance configured for serial communication
     """
-    return BonicBotController(port, baudrate)
+    return BonicBotController(CommunicationType.SERIAL, port=port, baudrate=baudrate)
+
+
+def create_websocket_controller(websocket_uri: str, timeout: float = 1.0) -> BonicBotController:
+    """
+    Create a BonicBot controller instance for WebSocket communication.
+    
+    Args:
+        websocket_uri: WebSocket URI
+        timeout: Connection timeout
+    
+    Returns:
+        BonicBotController instance configured for WebSocket communication
+    """
+    return BonicBotController(CommunicationType.WEBSOCKET, websocket_uri=websocket_uri, timeout=timeout)
 
 
 # Example usage and testing functions
 if __name__ == "__main__":
-    # Example usage
+    # Example usage for serial communication
+    print("Testing Serial Communication:")
     try:
-        # Create controller (adjust port as needed)
-        with BonicBotController('/dev/ttyUSB0') as bot:
-            
-            # Control individual servo
-            bot.control_servo('headPan', angle=45.0, speed=200, acc=20)
-            time.sleep(1)
-            
-            # Control head
-            bot.control_head(pan_angle=30.0, tilt_angle=-10.0)
-            time.sleep(2)
-            
-            # Control left hand
-            bot.control_left_hand(gripper_angle=90.0, elbow_angle=45.0)
-            time.sleep(2)
-            
-            # Control right hand
-            bot.control_right_hand(gripper_angle=45.0, wrist_angle=30.0)
-            time.sleep(2)
-            
-            # Move base
-            bot.move_forward(speed=50)
-            time.sleep(1)
-            bot.stop()
-            
+        with create_serial_controller('/dev/ttyUSB0') as bot:
+            if bot.is_connected():
+                print("Serial connection successful!")
+                
+                # Control individual servo
+                bot.control_servo('headPan', angle=45.0, speed=200, acc=20)
+                time.sleep(1)
+                
+                # Control head
+                bot.control_head(pan_angle=30.0, tilt_angle=-10.0)
+                time.sleep(2)
+                
+                # Move base
+                bot.move_forward(speed=50)
+                time.sleep(1)
+                bot.stop()
+            else:
+                print("Failed to establish serial connection")
+                
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Serial Error: {e}")
+    
+    print("\nTesting WebSocket Communication:")
+    # Example usage for WebSocket communication
+    try:
+        with create_websocket_controller('ws://192.168.1.100:8080/control') as bot:
+            if bot.is_connected():
+                print("WebSocket connection successful!")
+                
+                # Control individual servo
+                bot.control_servo('headPan', angle=45.0, speed=200, acc=20)
+                time.sleep(1)
+                
+                # Control head
+                bot.control_head(pan_angle=30.0, tilt_angle=-10.0)
+                time.sleep(2)
+                
+                # Move base
+                bot.move_forward(speed=50)
+                time.sleep(1)
+                bot.stop()
+            else:
+                print("Failed to establish WebSocket connection")
+                
+    except Exception as e:
+        print(f"WebSocket Error: {e}")

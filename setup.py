@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """
-BonicBot Python Library Setup with Optional GUI
+BonicBot Python Library Setup
+
+Dual Communication Support:
+- Serial communication for direct USB/UART connections
+- WebSocket communication for remote/network control
+
+Note about GUI dependencies:
+- GUI functionality requires tkinter (Python's built-in GUI library)
+- tkinter is NOT available via pip - it comes with Python or needs system installation
+- Core robot control works without GUI dependencies
 """
 
 from setuptools import setup, find_packages
@@ -18,10 +27,10 @@ def read_requirements():
 
 setup(
     name="bonicbot",
-    version="1.0.2",
-    author="Shahir abdulla",  # Replace with your name
+    version="1.2.0",
+    author="Shahir Abdulla",  # Replace with your name
     author_email="shahir@autobonics.com",  # Replace with your email
-    description="Python library for controlling BonicBot humanoid robot via serial communication",
+    description="Python library for controlling BonicBot humanoid robot via serial communication and WebSocket",
     long_description=read_readme(),
     long_description_content_type="text/markdown",
     url="https://github.com/Autobonics/bonicbot",  # Replace with your GitHub repo
@@ -56,7 +65,14 @@ setup(
     python_requires=">=3.7",
     install_requires=read_requirements(),
     extras_require={
-        "gui": [],  # tkinter is built-in, no extra dependencies needed
+        # Note: tkinter is part of Python standard library and cannot be installed via pip
+        # GUI functionality requires system installation of tkinter:
+        # - Ubuntu/Debian: sudo apt-get install python3-tk
+        # - CentOS/RHEL: sudo yum install python3-tkinter
+        # - Fedora: sudo dnf install python3-tkinter  
+        # - macOS: brew install python-tk (if missing)
+        # - Windows: Usually included with Python
+        "gui": [],  # Empty - tkinter is not pip-installable
         "dev": [
             "pytest>=6.0",
             "pytest-cov",
@@ -64,16 +80,31 @@ setup(
             "flake8",
             "mypy",
         ],
+        "examples": [
+            # Additional packages that make examples more interesting
+            "matplotlib>=3.0",  # For plotting robot movements
+            "numpy>=1.19.0",    # For mathematical calculations in examples
+        ],
     },
     entry_points={
         "console_scripts": [
-            "bonicbot-gui=bonicbot.gui:run_servo_controller [gui]",
+            # Note: GUI command will show helpful error if tkinter not available
+            "bonicbot-gui=bonicbot.gui:run_servo_controller",
+            "bonicbot-test=bonicbot.test_installation:main",  # Installation test
         ],
     },
     include_package_data=True,
     zip_safe=False,
     keywords=[
         "robot", "robotics", "servo", "control", "serial", "communication",
-        "humanoid", "bonicbot", "hardware", "automation"
+        "humanoid", "bonicbot", "hardware", "automation", "websocket", "remote"
     ],
+    
+    # Custom installation message
+    options={
+        "egg_info": {
+            "tag_build": "",
+            "tag_date": False,
+        }
+    },
 )
